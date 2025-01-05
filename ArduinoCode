@@ -1,0 +1,58 @@
+// iturnknobs MIDIclothes
+
+#include <MIDI.h>
+
+// Create a MIDI instance
+MIDI_CREATE_DEFAULT_INSTANCE();
+
+// Piezo input pins (A7 to A2)
+const int piezoPins[] = {A7, A6, A5, A4, A3, A2};
+const int numPiezos = sizeof(piezoPins) / sizeof(piezoPins[0]);
+
+// MIDI note numbers for each piezo (can be changed to fit your drum setup)
+const int midiNotes[] = {36, 38, 42, 46, 49, 51};  // Kick, Snare, Hi-hat1, Hi-hat2, Crash, Bell
+
+// Sensitivity and threshold settings for piezo triggering
+int sensitivity[] = {1023, 1023, 1023, 1023, 1023, 1023}; // Adjust sensitivity (1 to 1023) for each piezo
+int threshold[] = {50, 50, 50, 50, 50, 50};         // Minimum value to trigger the note
+
+// Variables for hit detection
+int peakValue[numPiezos] = {0};
+bool hitDetected[numPiezos] = {false};
+
+// Debounce time in milliseconds
+const int debounceTime = 150;  // Adjust debounce time as needed
+
+// Variables to track the last time each piezo triggered
+unsigned long lastHitTime[numPiezos] = {0};  // Track the last hit time for each piezo
+
+void setup() {
+  // Initialize MIDI over serial communication
+  MIDI.begin(MIDI_CHANNEL_OMNI); // Initialize MIDI communication (for all channels)
+  Serial.begin(115200);           // Start serial communication
+}
+
+void loop() {
+  for (int i = 0; i < numPiezos; i++) {
+    int piezoValue = analogRead(piezoPins[i]);  // Read the analog value from the piezo
+
+ // Check if the piezo value exceeds the threshold (trigger point)
+    // and if enough time has passed since the last trigger (debounce)
+    if (piezoValue > threshold[i] && (millis() - lastHitTime[i]) > debounceTime) {
+      lastHitTime[i] = millis();  // Update the last hit time to the current time
+      hitDetected[i] = true;
+      if (piezoValue > peakValue[i]) {
+        peakValue[i] = piezoValue;  // Store the peak value
+      }
+    } else if (hitDetected[i]) {
+      // Send MIDI note on with the velocity value
+      int velocity = map(peakValue[i], threshold[i], sensitivity[i], 1, 127);
+      MIDI.sendNoteOn(midiNotes[i], velocity, 1);
+      delay(10);  // Prevent retriggering too quickly
+      MIDI.sendNoteOff(midiNotes[i], 0, 1);
+
+      peakValue[i] = 0;  // Reset for the next hit
+      hitDetected[i] = false;
+    }
+  }
+}
